@@ -116,6 +116,7 @@ func (l *Logger) Save(current int) {
 func (l *Logger) SaveSnapshot() {
     data, err := l.server.Database.DumpSnapshot()
     if err == nil {
+        l.lastSnapshot = l.jsonIndex
         snapFile, err := os.OpenFile(strconv.Itoa(l.lastSnapshot) + ".snapshot", os.O_WRONLY|os.O_CREATE, 0644)
         if err != nil {
             panic(err)
@@ -127,7 +128,6 @@ func (l *Logger) SaveSnapshot() {
         }
         snapWriter.Flush()
         snapFile.Close()
-        l.lastSnapshot = l.jsonIndex
     }
 }
 
