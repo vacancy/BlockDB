@@ -59,12 +59,16 @@ func (l *Logger) Log(t *pb.Transaction) *LogRequest {
     return req
 }
 
-func (l *Logger) save(current int) {
+func (l *logger) GetBufferLength() int {
+    return l.BufferLength[l.CurrentBuffer]
+}
+
+func (l *Logger) Save(current int) {
     l.bufferSaved <- true
     // TODO:: save persistent log of l.Buffer[current]
 }
 
-func (l *Logger) mainloop() {
+func (l *Logger) Mainloop() {
     logFutures := make([]FutureLogResponse, s.config.blockSize)
     for {
         start := l.BufferLength[l.CurrentBuffer]

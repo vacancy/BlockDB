@@ -15,13 +15,17 @@ type subDatabase struct {
 
 type Database struct {
     sub []*subDatabase
+    config *ServerConfig
+    logger *Logger
 }
 
-func NewDatabse(ServerConfig ) *Database {
+func NewDatabse(ServerConfig conf, Logger logger) *Database {
     database := new(Database)
     for i := 0; i < SUBDB_COUNT; i++ {
         database.sub[i] = &subDatabase{items: make(map[string]int32)}
     }
+    database.config = conf
+    database.logger = logger
     return database
 }
 
@@ -35,11 +39,20 @@ func fnv32(key string) uint32 {
 	return hash
 }
 
+func checkKey(key string) bool {
+    // TODO:: FUCK
+    return true
+}
+
 func (db *Database) getSubDatabase(key string) *subDatabase {
     return db.sub[uint(fnv32(key))%uint(SUBDB_COUNT)]
 }
 
 func (db *Database) Get(key string) (int32, error) {
+    if !checkKey(key) {
+        return -1, nil, errors.New("invalid key/val")
+    }
+
     sub := db.getSubDatabase(key)
     sub.RLock()
     val, ok := subdb.items[key]
@@ -50,57 +63,87 @@ func (db *Database) Get(key string) (int32, error) {
     return val, nil
 }
 
-func (db *Database) Set(key string, val int32) (int32, error) {
-    subdb := db.getSubDatabase(key)
-    subdb.Lock()
-    _ = db.assertValueExist(subdb, key, false)
-    subdb.items[key] = val
-    subdb.Unlock()
-    return val, nil
-}
+func (db *Database) Set(key string, val int32) (int32, LogRequest, error) {
+    if !checkKey(key) || val < 0 {
+        return -1, nil, errors.New("invalid key/val")
+    }
 
-func (db *Database) Increase(key string, delta int32) (int32, error) {
-    subdb := db.getSubDatabase(key)
-    subdb.Lock()
-    _ = db.assertValueExist(subdb, key, false)
-    subdb.items[key] += delta
-    subdb.Unlock()
-    return 0, nil
-}
-
-func (db *Database) Decrease(key string, delta int32) (int32, error) {
     subdb := db.getSubDatabase(key)
     subdb.Lock()
     defer subdb.Unlock()
 
-    originVal := db.assertValueExist(subdb, key, false)
-    if originVal < delta {
-        return originVal, errors.New("val < delta")
-    }
-    subdb.items[key] -= delta
-    return 0, nil
+    subdb.items[key] = val
+    req := db.logger.Log(pb.Transaction{Type: 2, UserID: key, Value: val)
+    return val, req, nil
 }
 
-func (db *Database) Transfer(fromKey string, toKey string, delta int32) (int32, error) {
-    fromdb := db.getSubDatabase(fromKey)
-    todb := db.getSubDatabase(toKey)
-
-    fromdb.Lock()
-    defer fromdb.Unlock()
-    if fromdb != todb {
-        todb.Lock()
-        defer todb.Unlock()
+func (db *Database) Increase(key string, delta int32) (int32, LogRequest, error) {
+    if !checkKey(key) || delta < 0 {
+        return -1, nil, errors.New("invalid key/val")
     }
 
-    originVal := db.assertValueExist(fromdb, fromKey, false)
-    if originVal < delta {
-        return originVal, errors.New("val < delta")
+    subdb := db.getSubDatabase(key)
+    subdb.Lock()
+    defer subdb.Unlock()
+
+    _, ok := subdb.items[key]
+    if ok {
+        subdb.items[key] += delta
+    } else {
+        subdb.items[key] = delta
+    }
+    req := db.logger.Log(pb.Transaction{Type: 3, UserID: key, Value: val)
+    return 0, req, nil
+}
+
+func (db *Database) Decrease(key string, delta int32) (int32, LogRequest, error) {
+    if !checkKey(key) || delta < 0 {
+        return -1, nil, errors.New("invalid key/val")
+    }
+
+    subdb := db.getSubDatabase(key)
+    subdb.Lock()
+    defer subdb.Unlock()
+
+    oval, ok = subdb.items[key]
+    if !ok || oval < delta {
+        return -1, errors.New("oval < delta")
+    }
+    req := db.logger.Log(pb.Transaction{Type: 4, UserID: key, Value: val)
+    subdb.items[key] -= delta
+    return 0, req, nil
+}
+
+func (db *Database) Transfer(fromKey string, toKey string, delta int32) (int32, LogRequest, error) {
+    if !checkKey(key) || delta < 0 {
+        return -1, nil, errors.New("invalid key/val")
+    }
+
+    fromDB := db.getSubDatabase(fromKey)
+    toDB := db.getSubDatabase(toKey)
+
+    fromDB.Lock()
+    defer fromDB.Unlock()
+    if fromDB != toDB {
+        toDB.Lock()
+        defer toDB.Unlock()
+    }
+
+    oval, okf := fromDB.items[fromKey]
+
+    if !okf || oval < delta {
+        return -1, errors.New("val < delta")
     }
     fromdb.items[fromKey] -= delta
 
-    _ = db.assertValueExist(todb, toKey, false)
-    todb.items[toKey] += delta
+    _, okt := toDB.items[toKey]
+    if okt {
+        todb.items[toKey] += delta
+    } else {
+        todb.items[toKey] = delta
+    }
 
-    return 0, nil
+    req := db.logger.Log(pb.Transaction{Type: 5, FromID: fromKey, ToID: toKey, Value: val)
+    return 0, req, nil
 }
 

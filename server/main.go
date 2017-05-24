@@ -21,59 +21,52 @@ type ServerConfig struct {
     LogBatchSize int
 }
 
-type ServerContext struct {
-    data *Database
-}
-
 type Server struct {
-    config *ServerConfig
-    context *ServerContext
-    logChan LogRequestChan
-}
-
-func (s *Server) LogConcurrent() {
+    Config *ServerConfig
+    Logger *Logger
+    Database *Database
 }
 
 // Database Interface 
 func (s *Server) Get(ctx context.Context, in *pb.GetRequest) (res *pb.GetResponse, err error) {
-	return &pb.GetResponse{Value: 0}, nil
+    val, err := s.Database.Get(in.UserID)
+    if err != nil {
+        return &pb.GetResponse{Value: 0}, err
+    }
+	return &pb.GetResponse{Value: val}, err
 }
 func (s *Server) Put(ctx context.Context, in *pb.Request) (res *pb.BooleanResponse, err error) {
-    err = s.Log(pb.Transaction{Type: 2, UserID: in.UserID})
-    if err != nil {
-        return
+    val, req, err := s.Database.Set(in.UserID, in.Value)
+    if req != nil {
+        req.Wait()
     }
-	s.context.data[in.UserID] = in.Value
-	return &pb.BooleanResponse{Success: true}, nil
+	return &pb.BooleanResponse{Success: err == nil}, err
 }
 func (s *Server) Deposit(ctx context.Context, in *pb.Request) (res *pb.BooleanResponse, err error) {
-    err = s.Log(pb.Transaction{Type: 3, UserID: in.UserID})
-    if err != nil {
-        return
+    val, req, err := s.Database.Increase(in.UserID, in.Value)
+    if req != nil {
+        req.Wait()
     }
-	s.context.data[in.UserID] += in.Value
-	return &pb.BooleanResponse{Success: true}, nil
+	return &pb.BooleanResponse{Success: err == nil}, err
 }
 func (s *Server) Withdraw(ctx context.Context, in *pb.Request) (res *pb.BooleanResponse, err error) {
-    err = s.Log(pb.Transaction{Type: 4, UserID: in.UserID})
-    if err != nil {
-        return
+    val, req, err := s.Database.Decrease(in.UserID, in.Value)
+    if req != nil {
+        req.Wait()
     }
-	s.context.data[in.UserID] -= in.Value
-	return &pb.BooleanResponse{Success: true}, nil
+	return &pb.BooleanResponse{Success: err == nil}, err
 }
 func (s *Server) Transfer(ctx context.Context, in *pb.TransferRequest) (res *pb.BooleanResponse, err error) {
-    err = s.Log(pb.Transaction{Type: 5, FromID: in.FromID, ToID: in.ToID})
-    if err != nil {
-        return
+    val, req, err := s.Database.Transfer(in.FromID, in.ToID, in.Value)
+    if req != nil {
+        req.Wait()
     }
-	s.context.data[in.FromID] -= in.Value
-	s.context.data[in.ToID] += in.Value
-	return &pb.BooleanResponse{Success: true}, nil
+	return &pb.BooleanResponse{Success: err == nil}, err
 }
+
 // Interface with test grader
 func (s *Server) LogLength(ctx context.Context, in *pb.Null) (res *pb.GetResponse, err error) {
-	return &pb.GetResponse{Value: int32(len(s.context.logs))}, nil
+	return &pb.GetResponse{Value: int32(len(s.logger.GetBufferLength()))}, nil
 }
 
 func initializeConfig(configFile string) (conf *ServerConfig, err error) {
@@ -102,25 +95,19 @@ func initializeConfig(configFile string) (conf *ServerConfig, err error) {
     return
 }
 
-func initializeContext(conf *ServerConfig) (ctx *ServerContext, err error) {
-    ctx = new(ServerContext)
-    ctx.data = database.New()
-    ctx.logs = make([]pb.Transaction, 0, conf.blockSize)
-    return
-}
-
-func mainloop(sconf *ServerConfig, sctx *ServerContext) (err error) {
+func mainloop(conf *ServerConfig) (err error) {
 	// Bind to port
-	socket, err := net.Listen("tcp", sconf.Addr)
+	socket, err := net.Listen("tcp", conf.Addr)
 	if err != nil {
 		log.Fatalf("Failed to listen: %v", err)
         return
 	}
-	log.Printf("Listening: %s ...", sconf.Addr)
+	log.Printf("Listening: %s ...", conf.Addr)
 
     server := new(Server)
-    server.config = sconf
-    server.context = sctx
+    server.Config = conf
+    server.Logger = NewLogger(conf)
+    server.Database = NewDatabse(conf, server.Logger)
 
 	// Create gRPC server
 	rpcServer := grpc.NewServer()
@@ -137,16 +124,11 @@ func mainloop(sconf *ServerConfig, sctx *ServerContext) (err error) {
 
 // Main function, RPC server initialization
 func main() {
-    sconf, err := initializeConfig("config.json")
+    conf, err := initializeConfig("config.json")
     if err != nil {
         panic(err)
     }
-    sctx, err := initializeContext(sconf)
-    if err != nil {
-        panic(err)
-    }
-
-    err = mainloop(sconf, sctx)
+    err = mainloop(conf)
     if err != nil {
         panic(err)
     }
