@@ -48,7 +48,7 @@ func NewLogger(server *Server) (*Logger) {
     logger.jsonIndex = 0
     logger.jsonMarshaler = jsonpb.Marshaler{EnumsAsInts: false}
     logger.lastSnapshot = 0
-    l.bufferSaved = make(chan bool, 1)
+    logger.bufferSaved = make(chan bool, 1)
 
     return logger
 }
