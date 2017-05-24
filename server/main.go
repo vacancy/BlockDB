@@ -125,6 +125,7 @@ func mainloop(conf *ServerConfig) (err error) {
     server.Config = conf
     server.Logger = NewLogger(server)
     server.Database = NewDatabse(conf, server.Logger)
+    server.Logger.Recover()
 
     go server.Logger.Mainloop()
 
