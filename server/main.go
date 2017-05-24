@@ -108,7 +108,7 @@ func initializeConfig(configFile string) (conf *ServerConfig, err error) {
     conf.DataDir = fmt.Sprintf("%s",jsond["dataDir"])
     conf.BlockSize = 50
     conf.LogBatchSize = 16
-    conf.SnapshotBlockSize = 10
+    conf.SnapshotBlockSize = 25
     return
 }
 

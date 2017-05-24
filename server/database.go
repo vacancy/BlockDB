@@ -42,8 +42,7 @@ func fnv32(key string) uint32 {
 }
 
 func checkKey(key string) bool {
-    // TODO:: FUCK
-    return true
+    return len(key) == 8
 }
 
 func (db *Database) getSubDatabase(key string) *subDatabase {
