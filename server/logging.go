@@ -16,6 +16,7 @@ type Logger struct {
     CurrentBuffer int
     Channel chan *LogRequest
 
+    jsonIndex int
     bufferSaved chan bool
     config *ServerConfig
 }
@@ -32,6 +33,7 @@ func NewLogger(conf *ServerConfig) (*Logger) {
     logger.bufferSaved = make(chan bool, 1)
     logger.bufferSaved <- true
     logger.config = conf
+    logger.jsonIndex = 1
 
     return logger
 }
@@ -100,3 +102,4 @@ func (l *Logger) Mainloop() {
         }
     }
 }
+

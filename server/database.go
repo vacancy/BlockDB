@@ -49,6 +49,45 @@ func (db *Database) getSubDatabase(key string) *subDatabase {
     return db.sub[uint(fnv32(key))%uint(SUBDB_COUNT)]
 }
 
+func setAtomic(subdb *subDatabase, key string, val int32, t int) error {
+    if t == 1 {
+        subdb.items[key] = val
+    } else {
+        oval, ok := subdb.items[key]
+        if t == 2 {
+            if ok {
+                subdb.items[key] += val
+            } else {
+                subdb.items[key] = val
+            }
+        } else {
+            if !ok || oval < val {
+                return errors.New("oval < delta")
+            }
+            subdb.items[key] -= val
+        }
+    }
+    return nil
+}
+
+func transferAtomic(fromDB *subDatabase, toDB *subDatabase, fromKey string, toKey string, delta int32) error {
+    oval, okf := fromDB.items[fromKey]
+
+    if !okf || oval < delta {
+        return errors.New("val < delta")
+    }
+    fromDB.items[fromKey] -= delta
+
+    _, okt := toDB.items[toKey]
+    if okt {
+        toDB.items[toKey] += delta
+    } else {
+        toDB.items[toKey] = delta
+    }
+
+    return nil
+}
+
 func (db *Database) Get(key string) (int32, error) {
     if !checkKey(key) {
         return -1, errors.New("invalid key/val")
@@ -74,7 +113,7 @@ func (db *Database) Set(key string, val int32) (int32, *LogRequest, error) {
     subdb.Lock()
     defer subdb.Unlock()
 
-    subdb.items[key] = val
+    setAtomic(subdb, key, val, 1)
     req := db.logger.Log(&pb.Transaction{Type: 2, UserID: key, Value: val})
     return val, req, nil
 }
@@ -88,12 +127,7 @@ func (db *Database) Increase(key string, delta int32) (int32, *LogRequest, error
     subdb.Lock()
     defer subdb.Unlock()
 
-    _, ok := subdb.items[key]
-    if ok {
-        subdb.items[key] += delta
-    } else {
-        subdb.items[key] = delta
-    }
+    setAtomic(subdb, key, delta, 2)
     req := db.logger.Log(&pb.Transaction{Type: 3, UserID: key, Value: delta})
     return 0, req, nil
 }
@@ -107,12 +141,11 @@ func (db *Database) Decrease(key string, delta int32) (int32, *LogRequest, error
     subdb.Lock()
     defer subdb.Unlock()
 
-    oval, ok := subdb.items[key]
-    if !ok || oval < delta {
-        return -1, nil, errors.New("oval < delta")
+    err := setAtomic(subdb, key, delta, 3)
+    if err != nil {
+        return -1, nil, err
     }
     req := db.logger.Log(&pb.Transaction{Type: 4, UserID: key, Value: delta})
-    subdb.items[key] -= delta
     return 0, req, nil
 }
 
@@ -131,20 +164,10 @@ func (db *Database) Transfer(fromKey string, toKey string, delta int32) (int32, 
         defer toDB.Unlock()
     }
 
-    oval, okf := fromDB.items[fromKey]
-
-    if !okf || oval < delta {
-        return -1, nil, errors.New("val < delta")
+    err := transferAtomic(fromDB, toDB, fromKey, toKey, delta)
+    if err != nil {
+        return -1, nil, err
     }
-    fromDB.items[fromKey] -= delta
-
-    _, okt := toDB.items[toKey]
-    if okt {
-        toDB.items[toKey] += delta
-    } else {
-        toDB.items[toKey] = delta
-    }
-
     req := db.logger.Log(&pb.Transaction{Type: 5, FromID: fromKey, ToID: toKey, Value: delta})
     return 0, req, nil
 }
