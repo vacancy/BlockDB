@@ -1,2 +1,2 @@
 #!/bin/sh
-protoc -I ./ ./db.proto --go_out=plugins=grpc:./go 
+protoc -I ./ ./db.proto ./dbserver.proto --go_out=plugins=grpc:./go 

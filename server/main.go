@@ -19,12 +19,28 @@ type ServerConfig struct {
     DataDir string
     BlockSize int
     LogBatchSize int
+    SnapshotBlockSize int
 }
 
 type Server struct {
     Config *ServerConfig
     Logger *Logger
     Database *Database
+}
+
+func (s *Server) RecoverAtomic(trans *pb.Transaction) error {
+    var err error = nil
+    switch trans.Type {
+    case 2:
+        err = s.Database.SetAtomicKey(trans.UserID, trans.Value, 1)
+    case 3:
+        err = s.Database.SetAtomicKey(trans.UserID, trans.Value, 2)
+    case 4:
+        err = s.Database.SetAtomicKey(trans.UserID, trans.Value, 3)
+    case 5:
+        err = s.Database.TransferAtomicKey(trans.FromID, trans.ToID, trans.Value)
+    }
+    return err
 }
 
 // Database Interface 
@@ -92,6 +108,7 @@ func initializeConfig(configFile string) (conf *ServerConfig, err error) {
     conf.DataDir = fmt.Sprintf("%s",jsond["dataDir"])
     conf.BlockSize = 50
     conf.LogBatchSize = 16
+    conf.SnapshotBlockSize = 1
     return
 }
 
@@ -106,7 +123,7 @@ func mainloop(conf *ServerConfig) (err error) {
 
     server := new(Server)
     server.Config = conf
-    server.Logger = NewLogger(conf)
+    server.Logger = NewLogger(server)
     server.Database = NewDatabse(conf, server.Logger)
 
     go server.Logger.Mainloop()

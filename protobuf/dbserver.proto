@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package blockdb;
+
+message ServerState {
+    int32 JsonIndex = 1;
+    int32 LastSnapshot = 2;
+}
+
+message ServerSnapshot {
+    map<string, int32> Data = 1;
+}
+

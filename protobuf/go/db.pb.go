@@ -6,6 +6,7 @@ Package blockdb is a generated protocol buffer package.
 
 It is generated from these files:
 	db.proto
+	dbserver.proto
 
 It has these top-level messages:
 	GetRequest
@@ -16,6 +17,8 @@ It has these top-level messages:
 	Null
 	Transaction
 	Block
+	ServerState
+	ServerSnapshot
 */
 package blockdb
 
