@@ -2,6 +2,7 @@ package main;
 
 import (
     "os"
+    "log"
     "bufio"
     "strconv"
     pb "../protobuf/go"
@@ -112,6 +113,7 @@ func (l *Logger) Save(current int) {
 
     l.ResetInternal()
     l.bufferSaved <- true
+    log.Printf("Json saved for block %d", l.jsonIndex)
 }
 
 func (l *Logger) SaveSnapshot() {
@@ -133,11 +135,7 @@ func (l *Logger) SaveSnapshot() {
 }
 
 func (l *Logger) ResetInternal() {
-    state := &pb.ServerState{JsonIndex: int32(l.jsonIndex), LastSnapshot: int32(l.lastSnapshot)}
-    stateBytes, err := proto.Marshal(state)
-    if err != nil {
-        panic(err)
-    }
+    var err error
 
     if l.stateFile != nil {
         err = l.stateFile.Close()
@@ -149,11 +147,20 @@ func (l *Logger) ResetInternal() {
             panic(err)
         }
     }
+
     l.stateFile, err = os.OpenFile(l.GetFullPath(STATE_FILE), os.O_RDWR|os.O_CREATE, 0644)
     if err != nil {
         panic(err)
     }
     l.stateWriter = bufio.NewWriter(l.stateFile)
+
+    state := &pb.ServerState{JsonIndex: int32(l.jsonIndex), LastSnapshot: int32(l.lastSnapshot)}
+    log.Printf("Reset internal server.state: JsonIndex=%d, LastSnapshot=%d", l.jsonIndex, l.lastSnapshot)
+    stateBytes, err := proto.Marshal(state)
+    if err != nil {
+        panic(err)
+    }
+
     err = CRCSaveStream(l.stateWriter, stateBytes)
     if err != nil {
         panic(err)
@@ -199,6 +206,7 @@ func (l *Logger) Recover() {
     proto.Unmarshal(bytes, state)
     l.jsonIndex = int(state.JsonIndex)
     l.lastSnapshot = int(state.LastSnapshot)
+    log.Printf("Restored from server.state: JsonIndex=%d, Lastsnapshot=%d", l.jsonIndex, l.lastSnapshot)
 
     transactions := make([]*pb.Transaction, 0)
     for {
@@ -217,14 +225,15 @@ func (l *Logger) Recover() {
         }
     }
     stateFile.Close()
+    log.Printf("Restored from server.state: BufferedTransactions=%d", len(transactions))
 
-    l.stateFile, err = os.OpenFile(l.GetFullPath(STATE_FILE), os.O_RDWR|os.O_CREATE, 0644)
+    l.stateFile, err = os.OpenFile(l.GetFullPath(STATE_FILE), os.O_WRONLY, 0644)
     if err != nil {
         panic(err)
     }
+    l.stateFile.Seek(0, 2)
     l.stateWriter = bufio.NewWriter(l.stateFile)
     l.bufferSaved <- true
-
 
     if l.lastSnapshot != 0 {
         snapFile, err := os.Open(l.GetFullPath(strconv.Itoa(l.lastSnapshot) + ".snapshot"))
@@ -238,6 +247,7 @@ func (l *Logger) Recover() {
         }
         snapFile.Close()
         l.server.Database.LoadSnapshot(bytes)
+        log.Printf("Restored from snapshot file: %s", l.GetFullPath(strconv.Itoa(l.lastSnapshot) + ".snapshot"))
     }
 
     for i := l.lastSnapshot + 1; i <= l.jsonIndex; i++ {
@@ -253,12 +263,13 @@ func (l *Logger) Recover() {
         for j := 0; j < l.config.BlockSize; j++ {
             l.server.RecoverAtomic(block.Transactions[j])
         }
+        log.Printf("Restored from json file: %s", l.GetFullPath(strconv.Itoa(i) + ".json"))
     }
 
     for _, t := range transactions {
         l.server.RecoverAtomic(t)
     }
-
+    log.Printf("Restored from buffered transactions")
 }
 
 func (l *Logger) Mainloop() {
@@ -287,6 +298,7 @@ func (l *Logger) Mainloop() {
             l.jsonIndex += 1
             if l.jsonIndex % l.config.SnapshotBlockSize == 0 {
                 l.SaveSnapshot()
+                log.Printf("Snapshot saved at block %d", l.lastSnapshot)
             }
             go l.Save(l.CurrentBuffer)
             l.CurrentBuffer = 1 - l.CurrentBuffer
