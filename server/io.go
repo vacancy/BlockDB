@@ -43,19 +43,19 @@ func CRCSaveStream(w io.Writer, msg []byte) error {
 }
 
 func CRCLoad(filename string) (msg string, err error) {
-    buf, err := ioutil.ReadFile(filename)
+    data, err := ioutil.ReadFile(filename)
     if err != nil {
         return
     }
-    buf, err = ioutil.ReadFile(filename + ".crc")
+    buf, err := ioutil.ReadFile(filename + ".crc")
     if err != nil {
         return
     }
     crc := binary.LittleEndian.Uint32(buf)
-    if crc != crc32.ChecksumIEEE(buf) {
+    if crc != crc32.ChecksumIEEE(data) {
         err = errors.New("checksum fail")
     }
-    msg = string(buf)
+    msg = string(data)
     return
 }
 
