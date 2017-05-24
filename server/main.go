@@ -36,28 +36,28 @@ func (s *Server) Get(ctx context.Context, in *pb.GetRequest) (res *pb.GetRespons
 	return &pb.GetResponse{Value: val}, err
 }
 func (s *Server) Put(ctx context.Context, in *pb.Request) (res *pb.BooleanResponse, err error) {
-    val, req, err := s.Database.Set(in.UserID, in.Value)
+    _, req, err := s.Database.Set(in.UserID, in.Value)
     if req != nil {
         req.Wait()
     }
 	return &pb.BooleanResponse{Success: err == nil}, err
 }
 func (s *Server) Deposit(ctx context.Context, in *pb.Request) (res *pb.BooleanResponse, err error) {
-    val, req, err := s.Database.Increase(in.UserID, in.Value)
+    _, req, err := s.Database.Increase(in.UserID, in.Value)
     if req != nil {
         req.Wait()
     }
 	return &pb.BooleanResponse{Success: err == nil}, err
 }
 func (s *Server) Withdraw(ctx context.Context, in *pb.Request) (res *pb.BooleanResponse, err error) {
-    val, req, err := s.Database.Decrease(in.UserID, in.Value)
+    _, req, err := s.Database.Decrease(in.UserID, in.Value)
     if req != nil {
         req.Wait()
     }
 	return &pb.BooleanResponse{Success: err == nil}, err
 }
 func (s *Server) Transfer(ctx context.Context, in *pb.TransferRequest) (res *pb.BooleanResponse, err error) {
-    val, req, err := s.Database.Transfer(in.FromID, in.ToID, in.Value)
+    _, req, err := s.Database.Transfer(in.FromID, in.ToID, in.Value)
     if req != nil {
         req.Wait()
     }
@@ -66,7 +66,7 @@ func (s *Server) Transfer(ctx context.Context, in *pb.TransferRequest) (res *pb.
 
 // Interface with test grader
 func (s *Server) LogLength(ctx context.Context, in *pb.Null) (res *pb.GetResponse, err error) {
-	return &pb.GetResponse{Value: int32(len(s.logger.GetBufferLength()))}, nil
+    return &pb.GetResponse{Value: int32(s.Logger.GetBufferLength())}, nil
 }
 
 func initializeConfig(configFile string) (conf *ServerConfig, err error) {

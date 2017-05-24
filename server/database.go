@@ -3,6 +3,7 @@ package main
 import (
     "sync"
     "errors"
+    pb "../protobuf/go"
 )
 
 const SUBDB_COUNT = 32
@@ -19,7 +20,7 @@ type Database struct {
     logger *Logger
 }
 
-func NewDatabse(ServerConfig conf, Logger logger) *Database {
+func NewDatabse(conf *ServerConfig, logger *Logger) *Database {
     database := new(Database)
     for i := 0; i < SUBDB_COUNT; i++ {
         database.sub[i] = &subDatabase{items: make(map[string]int32)}
@@ -50,20 +51,21 @@ func (db *Database) getSubDatabase(key string) *subDatabase {
 
 func (db *Database) Get(key string) (int32, error) {
     if !checkKey(key) {
-        return -1, nil, errors.New("invalid key/val")
+        return -1, errors.New("invalid key/val")
     }
 
-    sub := db.getSubDatabase(key)
-    sub.RLock()
+    subdb := db.getSubDatabase(key)
+    subdb.RLock()
+    defer subdb.RUnlock()
+
     val, ok := subdb.items[key]
     if !ok {
         val = 0
     }
-    subdb.RUnlock()
     return val, nil
 }
 
-func (db *Database) Set(key string, val int32) (int32, LogRequest, error) {
+func (db *Database) Set(key string, val int32) (int32, *LogRequest, error) {
     if !checkKey(key) || val < 0 {
         return -1, nil, errors.New("invalid key/val")
     }
@@ -73,11 +75,11 @@ func (db *Database) Set(key string, val int32) (int32, LogRequest, error) {
     defer subdb.Unlock()
 
     subdb.items[key] = val
-    req := db.logger.Log(pb.Transaction{Type: 2, UserID: key, Value: val)
+    req := db.logger.Log(&pb.Transaction{Type: 2, UserID: key, Value: val})
     return val, req, nil
 }
 
-func (db *Database) Increase(key string, delta int32) (int32, LogRequest, error) {
+func (db *Database) Increase(key string, delta int32) (int32, *LogRequest, error) {
     if !checkKey(key) || delta < 0 {
         return -1, nil, errors.New("invalid key/val")
     }
@@ -92,11 +94,11 @@ func (db *Database) Increase(key string, delta int32) (int32, LogRequest, error)
     } else {
         subdb.items[key] = delta
     }
-    req := db.logger.Log(pb.Transaction{Type: 3, UserID: key, Value: val)
+    req := db.logger.Log(&pb.Transaction{Type: 3, UserID: key, Value: delta})
     return 0, req, nil
 }
 
-func (db *Database) Decrease(key string, delta int32) (int32, LogRequest, error) {
+func (db *Database) Decrease(key string, delta int32) (int32, *LogRequest, error) {
     if !checkKey(key) || delta < 0 {
         return -1, nil, errors.New("invalid key/val")
     }
@@ -105,17 +107,17 @@ func (db *Database) Decrease(key string, delta int32) (int32, LogRequest, error)
     subdb.Lock()
     defer subdb.Unlock()
 
-    oval, ok = subdb.items[key]
+    oval, ok := subdb.items[key]
     if !ok || oval < delta {
-        return -1, errors.New("oval < delta")
+        return -1, nil, errors.New("oval < delta")
     }
-    req := db.logger.Log(pb.Transaction{Type: 4, UserID: key, Value: val)
+    req := db.logger.Log(&pb.Transaction{Type: 4, UserID: key, Value: delta})
     subdb.items[key] -= delta
     return 0, req, nil
 }
 
-func (db *Database) Transfer(fromKey string, toKey string, delta int32) (int32, LogRequest, error) {
-    if !checkKey(key) || delta < 0 {
+func (db *Database) Transfer(fromKey string, toKey string, delta int32) (int32, *LogRequest, error) {
+    if !checkKey(fromKey) || !checkKey(toKey) || delta < 0 {
         return -1, nil, errors.New("invalid key/val")
     }
 
@@ -132,18 +134,18 @@ func (db *Database) Transfer(fromKey string, toKey string, delta int32) (int32, 
     oval, okf := fromDB.items[fromKey]
 
     if !okf || oval < delta {
-        return -1, errors.New("val < delta")
+        return -1, nil, errors.New("val < delta")
     }
-    fromdb.items[fromKey] -= delta
+    fromDB.items[fromKey] -= delta
 
     _, okt := toDB.items[toKey]
     if okt {
-        todb.items[toKey] += delta
+        toDB.items[toKey] += delta
     } else {
-        todb.items[toKey] = delta
+        toDB.items[toKey] = delta
     }
 
-    req := db.logger.Log(pb.Transaction{Type: 5, FromID: fromKey, ToID: toKey, Value: val)
+    req := db.logger.Log(&pb.Transaction{Type: 5, FromID: fromKey, ToID: toKey, Value: delta})
     return 0, req, nil
 }
 
