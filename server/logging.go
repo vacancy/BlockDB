@@ -3,6 +3,7 @@ package main;
 import (
     "os"
     "log"
+    "sync"
     "bufio"
     "strconv"
     pb "../protobuf/go"
@@ -32,6 +33,7 @@ type Logger struct {
     config *ServerConfig
     stateFile *os.File
     stateWriter *bufio.Writer
+    stateWriterMutex *sync.Mutex
 }
 
 func NewLogger(server *Server) (*Logger) {
@@ -50,6 +52,7 @@ func NewLogger(server *Server) (*Logger) {
     logger.jsonMarshaler = jsonpb.Marshaler{EnumsAsInts: false}
     logger.lastSnapshot = 0
     logger.bufferSaved = make(chan bool, 1)
+    logger.stateWriterMutex = new(sync.Mutex)
 
     return logger
 }
@@ -91,9 +94,7 @@ func (l *Logger) GetBufferLength() int {
     return l.BufferLength[l.CurrentBuffer]
 }
 
-func (l *Logger) Save(current int) {
-    _ = <-l.bufferSaved
-    
+func (l *Logger) Save(current int) {    
     block := new(pb.Block)
     block.BlockID = int32(l.jsonIndex)
     block.PrevHash = "00000000"
@@ -112,6 +113,7 @@ func (l *Logger) Save(current int) {
     }
 
     l.ResetInternal()
+    l.stateWriterMutex.Unlock()
     l.bufferSaved <- true
     log.Printf("Json saved for block %d", l.jsonIndex)
 }
@@ -172,6 +174,7 @@ func (l *Logger) ResetInternal() {
 }
 
 func (l *Logger) AppendInternal(reqs []*LogRequest) {
+    l.stateWriterMutex.Lock()
     for _, req := range reqs {
         bytes, err := proto.Marshal(req.Transaction)
         err = CRCSaveStream(l.stateWriter, bytes)
@@ -180,6 +183,7 @@ func (l *Logger) AppendInternal(reqs []*LogRequest) {
         }
     }
     err := l.stateWriter.Flush()
+    l.stateWriterMutex.Unlock()
     if err != nil {
         panic(err)
     }
@@ -295,11 +299,13 @@ func (l *Logger) Mainloop() {
         }
 
         if end == l.config.BlockSize {
+            _ = <-l.bufferSaved
             l.jsonIndex += 1
             if l.jsonIndex % l.config.SnapshotBlockSize == 0 {
                 l.SaveSnapshot()
                 log.Printf("Snapshot saved at block %d", l.lastSnapshot)
             }
+            l.stateWriterMutex.Lock()
             go l.Save(l.CurrentBuffer)
             l.CurrentBuffer = 1 - l.CurrentBuffer
             l.BufferLength[l.CurrentBuffer] = 0
