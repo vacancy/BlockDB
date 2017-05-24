@@ -106,25 +106,29 @@ func (l *Logger) Save(current int) {
     }
 
     if l.jsonIndex % l.config.SnapshotBlockSize == 0 {
-        data, err := l.server.Database.DumpSnapshot()
-        if err == nil {
-            l.lastSnapshot = l.jsonIndex
-            snapFile, err := os.OpenFile(strconv.Itoa(l.lastSnapshot) + ".snapshot", os.O_WRONLY|os.O_CREATE, 0644)
-            if err != nil {
-                panic(err)
-            }
-            snapWriter := bufio.NewWriter(snapFile)
-            err = CRCSaveStream(snapWriter, data)
-            if err != nil {
-                panic(err)
-            }
-            snapWriter.Flush()
-            snapFile.Close()
-        }
+        l.SaveSnapshot()
     }
 
     l.ResetInternal()
     l.bufferSaved <- true
+}
+
+func (l *Logger) SaveSnapshot() {
+    data, err := l.server.Database.DumpSnapshot()
+    if err == nil {
+        snapFile, err := os.OpenFile(strconv.Itoa(l.lastSnapshot) + ".snapshot", os.O_WRONLY|os.O_CREATE, 0644)
+        if err != nil {
+            panic(err)
+        }
+        snapWriter := bufio.NewWriter(snapFile)
+        err = CRCSaveStream(snapWriter, data)
+        if err != nil {
+            panic(err)
+        }
+        snapWriter.Flush()
+        snapFile.Close()
+        l.lastSnapshot = l.jsonIndex
+    }
 }
 
 func (l *Logger) ResetInternal() {
