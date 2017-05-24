@@ -4,6 +4,8 @@ import (
     "io"
     "io/ioutil"
     "encoding/binary"
+    "hash/crc32"
+    "errors"
 )
 
 func CRCSave(filename string, msg string) error {
@@ -12,7 +14,9 @@ func CRCSave(filename string, msg string) error {
     if err != nil {
         return err
     }
-    err = ioutil.WriteFile(filename + ".crc", crc32.ChecksumIEEE(byteMsg))
+    bs := make([]byte, 4)
+    binary.LittleEndian.PutUint32(bs, crc32.ChecksumIEEE(byteMsg))
+    err = ioutil.WriteFile(filename + ".crc", bs, 0644)
     if err != nil {
         return err
     }
@@ -26,7 +30,7 @@ func CRCSaveStream(w io.Writer, msg []byte) error {
     if err != nil{
         return err
     }
-    _, err = w.write(msg)
+    _, err = w.Write(msg)
     if err != nil{
         return err
     }
@@ -35,6 +39,7 @@ func CRCSaveStream(w io.Writer, msg []byte) error {
     if err != nil{
         return err
     }
+    return nil
 }
 
 func CRCLoad(filename string) (msg string, err error) {
@@ -42,10 +47,11 @@ func CRCLoad(filename string) (msg string, err error) {
     if err != nil {
         return
     }
-    crc, err := ioutil.ReadFile(filename + ".crc")
+    buf, err = ioutil.ReadFile(filename + ".crc")
     if err != nil {
         return
     }
+    crc := binary.LittleEndian.Uint32(buf)
     if crc != crc32.ChecksumIEEE(buf) {
         err = errors.New("checksum fail")
     }
@@ -53,15 +59,19 @@ func CRCLoad(filename string) (msg string, err error) {
     return
 }
 
-func CRCLoadStream(r io.Reader) (msg []byte, err error) {
+func CRCLoadStream(r io.Reader) (msg []byte, haveEOF bool, err error) {
+    haveEOF = false
     bs := make([]byte, 4)
-    _, err = r.Read(buff)
+    _, err = r.Read(bs)
     if err != nil {
+        if err == io.EOF {
+            haveEOF = true
+        }
         return
     }
     l := binary.LittleEndian.Uint32(bs)
 
-    msg := make([]byte, l)
+    msg = make([]byte, l)
     _, err = r.Read(msg)
     if err != nil {
         return
@@ -77,5 +87,6 @@ func CRCLoadStream(r io.Reader) (msg []byte, err error) {
     if crc != crc32.ChecksumIEEE(msg) {
         err = errors.New("checksum fail")
     }
+    return 
 }
 
