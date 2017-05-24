@@ -7,7 +7,6 @@ import (
 )
 
 const SUBDB_COUNT = 32
-const DEFAULT_VALUE int32 = 0
 
 type subDatabase struct {
     items map[string]int32
@@ -22,6 +21,7 @@ type Database struct {
 
 func NewDatabse(conf *ServerConfig, logger *Logger) *Database {
     database := new(Database)
+    database.sub = make([]*subDatabase, SUBDB_COUNT)
     for i := 0; i < SUBDB_COUNT; i++ {
         database.sub[i] = &subDatabase{items: make(map[string]int32)}
     }

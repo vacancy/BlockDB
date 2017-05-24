@@ -81,11 +81,11 @@ func (l *Logger) Mainloop() {
             this := <-l.Channel
             l.Buffer[l.CurrentBuffer][end] = this
             end += 1
+            l.BufferLength[l.CurrentBuffer] = end
             if end == l.config.BlockSize {
                 break
             }
         }
-        l.BufferLength[l.CurrentBuffer] = end
 
         // TODO:: save batched log from start to end
         for i := start; i < end; i++ {

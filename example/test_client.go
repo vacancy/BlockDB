@@ -101,7 +101,7 @@ func main() {
 		if r, err := c.LogLength(context.Background(), &pb.Null{}); err != nil {
 			log.Printf("LogLength Error: %v", err)
 		} else {
-			log.Printf("LogLength Return: %s", r)
+			log.Printf("LogLength Return: %d", r.Value)
 		}
 	}
 }

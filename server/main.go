@@ -31,37 +31,37 @@ type Server struct {
 func (s *Server) Get(ctx context.Context, in *pb.GetRequest) (res *pb.GetResponse, err error) {
     val, err := s.Database.Get(in.UserID)
     if err != nil {
-        return &pb.GetResponse{Value: 0}, err
+        return &pb.GetResponse{Value: 0}, nil
     }
-	return &pb.GetResponse{Value: val}, err
+	return &pb.GetResponse{Value: val}, nil
 }
 func (s *Server) Put(ctx context.Context, in *pb.Request) (res *pb.BooleanResponse, err error) {
     _, req, err := s.Database.Set(in.UserID, in.Value)
     if req != nil {
         req.Wait()
     }
-	return &pb.BooleanResponse{Success: err == nil}, err
+	return &pb.BooleanResponse{Success: err == nil}, nil
 }
 func (s *Server) Deposit(ctx context.Context, in *pb.Request) (res *pb.BooleanResponse, err error) {
     _, req, err := s.Database.Increase(in.UserID, in.Value)
     if req != nil {
         req.Wait()
     }
-	return &pb.BooleanResponse{Success: err == nil}, err
+	return &pb.BooleanResponse{Success: err == nil}, nil
 }
 func (s *Server) Withdraw(ctx context.Context, in *pb.Request) (res *pb.BooleanResponse, err error) {
     _, req, err := s.Database.Decrease(in.UserID, in.Value)
     if req != nil {
         req.Wait()
     }
-	return &pb.BooleanResponse{Success: err == nil}, err
+	return &pb.BooleanResponse{Success: err == nil}, nil
 }
 func (s *Server) Transfer(ctx context.Context, in *pb.TransferRequest) (res *pb.BooleanResponse, err error) {
     _, req, err := s.Database.Transfer(in.FromID, in.ToID, in.Value)
     if req != nil {
         req.Wait()
     }
-	return &pb.BooleanResponse{Success: err == nil}, err
+	return &pb.BooleanResponse{Success: err == nil}, nil
 }
 
 // Interface with test grader
@@ -108,6 +108,8 @@ func mainloop(conf *ServerConfig) (err error) {
     server.Config = conf
     server.Logger = NewLogger(conf)
     server.Database = NewDatabse(conf, server.Logger)
+
+    go server.Logger.Mainloop()
 
 	// Create gRPC server
 	rpcServer := grpc.NewServer()
