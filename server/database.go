@@ -18,7 +18,6 @@ type Database struct {
     sub []*subDatabase
     config *ServerConfig
     logger *Logger
-    sync.Mutex
 }
 
 func NewDatabse(conf *ServerConfig, logger *Logger) *Database {
@@ -48,9 +47,8 @@ func checkKey(key string) bool {
 }
 
 func (db *Database) getSubDatabase(key string) *subDatabase {
-    db.Lock()
-    defer db.Unlock()
-    return db.sub[uint(fnv32(key))%uint(SUBDB_COUNT)]
+    ind := uint(fnv32(key))%uint(SUBDB_COUNT)
+    return db.sub[ind]
 }
 
 func (db *Database) SetAtomicKey(key string, val int32, t int) error {
@@ -188,11 +186,9 @@ func (db *Database) Transfer(fromKey string, toKey string, delta int32) (int32, 
 }
 
 func (db *Database) DumpSnapshot() ([]byte, error) {
-    db.Lock()
     for _, subdb := range db.sub {
         subdb.RLock()
     }
-    db.Unlock()
 
     snapshot := new(pb.ServerSnapshot)
     snapshot.Data = make(map[string]int32)
@@ -216,11 +212,9 @@ func (db *Database) LoadSnapshot(data []byte) error {
     if err != nil {
         return err
     }
-    db.Lock()
     for _, subdb := range db.sub {
         subdb.Lock()
     }
-    db.Unlock()
 
     for k, v := range snapshot.Data {
         db.getSubDatabase(k).items[k] = v

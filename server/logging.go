@@ -91,8 +91,8 @@ func (l *Logger) GetBufferLength() int {
 }
 
 func (l *Logger) Save(current int) {
-    l.jsonIndex += 1
-
+    _ = <-l.bufferSaved
+    
     block := new(pb.Block)
     block.BlockID = int32(l.jsonIndex)
     block.PrevHash = "00000000"
@@ -108,10 +108,6 @@ func (l *Logger) Save(current int) {
     err = CRCSave(l.GetFullPath(strconv.Itoa(l.jsonIndex) + ".json"), data)
     if err != nil {
         panic(err)
-    }
-
-    if l.jsonIndex % l.config.SnapshotBlockSize == 0 {
-        l.SaveSnapshot()
     }
 
     l.ResetInternal()
@@ -288,7 +284,10 @@ func (l *Logger) Mainloop() {
         }
 
         if end == l.config.BlockSize {
-            _ = <-l.bufferSaved
+            l.jsonIndex += 1
+            if l.jsonIndex % l.config.SnapshotBlockSize == 0 {
+                l.SaveSnapshot()
+            }
             go l.Save(l.CurrentBuffer)
             l.CurrentBuffer = 1 - l.CurrentBuffer
             l.BufferLength[l.CurrentBuffer] = 0
