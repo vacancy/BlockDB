@@ -48,6 +48,7 @@ func NewLogger(server *Server) (*Logger) {
     logger.jsonIndex = 0
     logger.jsonMarshaler = jsonpb.Marshaler{EnumsAsInts: false}
     logger.lastSnapshot = 0
+    l.bufferSaved = make(chan bool, 1)
 
     return logger
 }
@@ -184,7 +185,6 @@ func (l *Logger) AppendInternal(reqs []*LogRequest) {
 func (l *Logger) Recover() {
 	if _, err := os.Stat(l.GetFullPath(STATE_FILE)); os.IsNotExist(err) {
         l.ResetInternal()
-        l.bufferSaved = make(chan bool, 1)
         l.bufferSaved <- true
         return
 	}
@@ -214,7 +214,7 @@ func (l *Logger) Recover() {
             t := &pb.Transaction{}
             proto.Unmarshal(bytes, t)
             transactions = append(transactions, t)
-            l.Buffer[l.CurrentBuffer][l.BufferLength[l.CurrentBuffer]] = &LogRequest{Transaction: t};
+            l.Buffer[l.CurrentBuffer][l.BufferLength[l.CurrentBuffer]] = &LogRequest{Transaction: t}
             l.BufferLength[l.CurrentBuffer] += 1
         } else {
             break
@@ -227,6 +227,8 @@ func (l *Logger) Recover() {
         panic(err)
     }
     l.stateWriter = bufio.NewWriter(l.stateFile)
+    l.bufferSaved <- true
+
 
     if l.lastSnapshot != 0 {
         snapFile, err := os.Open(l.GetFullPath(strconv.Itoa(l.lastSnapshot) + ".snapshot"))
