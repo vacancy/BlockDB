@@ -11,7 +11,7 @@ import (
 
 const STATE_FILE = "server.state"
 
-type FutureLogResponse chan bool 
+type FutureLogResponse chan bool
 type LogRequest struct {
     Transaction *pb.Transaction
     LogResponse FutureLogResponse
@@ -71,6 +71,10 @@ func (req *LogRequest) Wait() bool {
     return succ
 }
 
+func (l *Logger) GetFullPath(name string) string {
+    return l.config.DataDir + name
+}
+
 func (l *Logger) Log(t *pb.Transaction) *LogRequest {
     req := NewLogRequest(t)
     l.Channel <- req
@@ -100,7 +104,7 @@ func (l *Logger) Save(current int) {
     if err != nil {
         panic(err)
     }
-    err = CRCSave(strconv.Itoa(l.jsonIndex) + ".json", data)
+    err = CRCSave(l.GetFullPath(strconv.Itoa(l.jsonIndex) + ".json"), data)
     if err != nil {
         panic(err)
     }
@@ -117,7 +121,7 @@ func (l *Logger) SaveSnapshot() {
     data, err := l.server.Database.DumpSnapshot()
     if err == nil {
         l.lastSnapshot = l.jsonIndex
-        snapFile, err := os.OpenFile(strconv.Itoa(l.lastSnapshot) + ".snapshot", os.O_WRONLY|os.O_CREATE, 0644)
+        snapFile, err := os.OpenFile(l.GetFullPath(strconv.Itoa(l.lastSnapshot) + ".snapshot"), os.O_WRONLY|os.O_CREATE, 0644)
         if err != nil {
             panic(err)
         }
@@ -143,12 +147,12 @@ func (l *Logger) ResetInternal() {
         if err != nil {
             panic(err)
         }
-        err = os.Remove(STATE_FILE)
+        err = os.Remove(l.GetFullPath(STATE_FILE))
         if err != nil {
             panic(err)
         }
     }
-    l.stateFile, err = os.OpenFile(STATE_FILE, os.O_RDWR|os.O_CREATE, 0644)
+    l.stateFile, err = os.OpenFile(l.GetFullPath(STATE_FILE), os.O_RDWR|os.O_CREATE, 0644)
     if err != nil {
         panic(err)
     }
@@ -178,14 +182,14 @@ func (l *Logger) AppendInternal(reqs []*LogRequest) {
 }
 
 func (l *Logger) Recover() {
-	if _, err := os.Stat(STATE_FILE); os.IsNotExist(err) {
+	if _, err := os.Stat(l.GetFullPath(STATE_FILE)); os.IsNotExist(err) {
         l.ResetInternal()
         l.bufferSaved = make(chan bool, 1)
         l.bufferSaved <- true
         return
 	}
 
-    stateFile, err := os.Open(STATE_FILE)
+    stateFile, err := os.Open(l.GetFullPath(STATE_FILE))
     if err != nil {
         panic(err)
     }
@@ -218,14 +222,14 @@ func (l *Logger) Recover() {
     }
     stateFile.Close()
 
-    l.stateFile, err = os.OpenFile(STATE_FILE, os.O_RDWR|os.O_CREATE, 0644)
+    l.stateFile, err = os.OpenFile(l.GetFullPath(STATE_FILE), os.O_RDWR|os.O_CREATE, 0644)
     if err != nil {
         panic(err)
     }
     l.stateWriter = bufio.NewWriter(l.stateFile)
 
     if l.lastSnapshot != 0 {
-        snapFile, err := os.Open(strconv.Itoa(l.lastSnapshot) + ".snapshot")
+        snapFile, err := os.Open(l.GetFullPath(strconv.Itoa(l.lastSnapshot) + ".snapshot"))
         if err != nil {
             panic(err)
         }
@@ -240,7 +244,7 @@ func (l *Logger) Recover() {
 
     for i := l.lastSnapshot + 1; i <= l.jsonIndex; i++ {
         block := new(pb.Block)
-        json, err := CRCLoad(strconv.Itoa(i) + ".json")
+        json, err := CRCLoad(l.GetFullPath(strconv.Itoa(i) + ".json"))
         if err != nil {
             panic(err)
         }
